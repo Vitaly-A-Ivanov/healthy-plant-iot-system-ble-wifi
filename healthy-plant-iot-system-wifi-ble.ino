@@ -117,8 +117,8 @@ RTC_DATA_ATTR uint8_t oldDeviceConnected = false;
 /****** Server callback fields *********************************/
 
 /****** Deep Sleep fields *********************************/
-const uint8_t DEEP_SLEEP_TIME = 1; // in minutes
-const uint8_t SLEEP_DELAY_TIME = 1; // in minutes
+const uint8_t DEEP_SLEEP_TIME = 120; // in minutes
+const uint8_t SLEEP_DELAY_TIME = 15; // in minutes
 
 /*
 * Checks a plant moisture.
@@ -172,6 +172,7 @@ bool is_number(const std::string& s) {
 uint8_t checkIfProblem() {
   if (isMoistTooHigh || isMoistTooLow || isTempTooHigh || isTempTooLow
     || isHumidTooHigh || isHumidTooLow || isLightTooHigh || isLightTooLow) {
+    digitalWrite(LED_BUILTIN, HIGH);
     return true;
   }
   else
@@ -266,6 +267,7 @@ void sendToUbidots() {
   uint16_t moist = moistureLevel;
   
 
+
   ubidots.add("Temperature", temp); 
   ubidots.add("Humidity", humid);
   ubidots.add("Soil Moisture", moist);
@@ -277,7 +279,9 @@ void sendToUbidots() {
   if (bufferSent) {
     // Do something if values were sent properly
     Serial.println("Values sent by the device");
-  }
+  } else {
+     Serial.println("Values did not send by the device");
+    }
 }
 /*
 * Sends the unit to the deep sleep.
@@ -285,7 +289,7 @@ void sendToUbidots() {
 */
 void goToDeepSleep() {
   Serial.println("Going to sleep now for " + String(DEEP_SLEEP_TIME) + " Minutes");
-  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIME * 60 * 1000000);
+  esp_sleep_enable_timer_wakeup(DEEP_SLEEP_TIME * 600000);
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_33,1);
   Serial.println("Slepping.....");
   delay(1000);
@@ -331,6 +335,7 @@ void readSensors() {
   // read the moisture
   Serial.println(F(""));
   uint16_t moisture = getMoisture();
+  delay(100);
   if (isnan(moisture)) {
     Serial.println(F("Failed to read from moisture sensor!"));
     isMoistSensorFault = true;
@@ -362,6 +367,7 @@ void readSensors() {
   }
   // read temperature
   int temp = getTemperature();
+  delay(100);
   if (isnan(temp)) {
     Serial.println(F("Failed to read a temperature!"));
     isTempSensorFault = true;
@@ -492,6 +498,12 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minMoist = i;
+        readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
+        
       }
       else {
         Serial.println(F("not a number"));
@@ -502,6 +514,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxMoist = i;
+                readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -512,6 +529,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         int i = atoi((pCharacteristic->getValue().c_str()));
         minTemp = i;
+                readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -522,6 +544,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         int i = atoi((pCharacteristic->getValue().c_str()));
         maxTemp = i;
+                readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -532,6 +559,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minHumid = i;
+                readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -542,6 +574,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxHumid = i;
+                readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -552,6 +589,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minLight = i;
+                readSensors();
+        sendToUbidots();
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -562,6 +604,11 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxLight = i;
+                readSensors();
+
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
       }
       else {
         Serial.println(F("not a number"));
@@ -649,7 +696,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       sprintf(str, "%u", minLight);
       pCharacteristic->setValue("Minimum Light Intensity level: " + std::string(str));
     }
-    //l ight intensity maximum threshold
+    //light intensity maximum threshold
     if (lightMaxCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%u", maxLight);
@@ -679,7 +726,7 @@ void setup() {
 // Ubibot setup
 
   ubidots.wifiConnect(WIFI_SSID, WIFI_PASSWORD);
-  ubidots.setDebug(true);
+//  ubidots.setDebug(true);
 
 
   // temperature and humidity sensor setup //
@@ -823,22 +870,20 @@ void loop() {
   sendToUbidots();
   if (checkIfProblem()) {
     sendBLENotification();
-    digitalWrite(LED_BUILTIN, HIGH);
   }
   else {
     digitalWrite(LED_BUILTIN, LOW);
     delay(1000);
     Serial.println(F(""));
     Serial.print(F("Everything is ok. Going to sleep in a "));
-    Serial.print(SLEEP_DELAY_TIME * 30); // needs to be 2 hour
-    Serial.println(F(" Seconds"));
-    delay(SLEEP_DELAY_TIME * 1000 * 30); // needs to be 10 minutes
+    Serial.print(SLEEP_DELAY_TIME);
+    Serial.println(F(" minutes"));
+    delay(SLEEP_DELAY_TIME * 60000); 
     Serial.println(F(""));
     Serial.println(F("Reading all sensors again before sleep..."));
     readSensors();
     sendToUbidots();
     if (checkIfProblem()) {
-      digitalWrite(LED_BUILTIN, HIGH);
       delay(1000);
       Serial.println(F(""));
       Serial.println(F("Sleep abandoned! Needs your attention!"));
