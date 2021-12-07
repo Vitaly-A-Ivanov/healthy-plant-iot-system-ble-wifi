@@ -82,7 +82,7 @@ const uint8_t DHTTYPE = DHT11;
 // last temperature level
 RTC_DATA_ATTR int temperatureLevel = 0;
 // threshold
-RTC_DATA_ATTR int minTemp = 0;
+RTC_DATA_ATTR int minTemp = 5000;
 RTC_DATA_ATTR int maxTemp = 50000;
 RTC_DATA_ATTR uint8_t isTempTooHigh = false;
 RTC_DATA_ATTR uint8_t isTempTooLow = false;
@@ -120,6 +120,10 @@ RTC_DATA_ATTR uint8_t oldDeviceConnected = false;
 const uint8_t DEEP_SLEEP_TIME = 120; // in minutes
 const uint8_t SLEEP_DELAY_TIME = 15; // in minutes
 
+
+const unsigned long eventInterval = 1800000;
+unsigned long previousTime = 0;
+
 /*
 * Checks a plant moisture.
 * Returns a value from the moisture sensor.
@@ -135,6 +139,7 @@ uint16_t getMoisture() {
 */
 int getTemperature() {
   int tp = dht.readTemperature();
+  delay(500);
   return tp;
 }
 
@@ -144,6 +149,7 @@ int getTemperature() {
 */
 uint16_t getHumidity() {
   uint16_t hm = dht.readHumidity();
+  delay(500);
   return hm;
 }
 
@@ -335,7 +341,6 @@ void readSensors() {
   // read the moisture
   Serial.println(F(""));
   uint16_t moisture = getMoisture();
-  delay(100);
   if (isnan(moisture)) {
     Serial.println(F("Failed to read from moisture sensor!"));
     isMoistSensorFault = true;
@@ -367,7 +372,7 @@ void readSensors() {
   }
   // read temperature
   int temp = getTemperature();
-  delay(100);
+
   if (isnan(temp)) {
     Serial.println(F("Failed to read a temperature!"));
     isTempSensorFault = true;
@@ -499,6 +504,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minMoist = i;
         readSensors();
+      
 
         if (checkIfProblem()) {
           sendBLENotification();
@@ -528,12 +534,12 @@ class MyCallbacks : public BLECharacteristicCallbacks {
     if (tempMinCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         int i = atoi((pCharacteristic->getValue().c_str()));
-        minTemp = i;
-                readSensors();
-
-        if (checkIfProblem()) {
+         minTemp = i;
+         int ml = getTemperature();
+         if(ml < minTemp {
+          isTempTooLow = true;
           sendBLENotification();
-        }
+          }
       }
       else {
         Serial.println(F("not a number"));
@@ -545,6 +551,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         int i = atoi((pCharacteristic->getValue().c_str()));
         maxTemp = i;
                 readSensors();
+                  delay(500);
 
         if (checkIfProblem()) {
           sendBLENotification();
@@ -560,6 +567,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minHumid = i;
                 readSensors();
+                  delay(500);
 
         if (checkIfProblem()) {
           sendBLENotification();
@@ -575,6 +583,7 @@ class MyCallbacks : public BLECharacteristicCallbacks {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxHumid = i;
                 readSensors();
+                  delay(500);
 
         if (checkIfProblem()) {
           sendBLENotification();
@@ -710,6 +719,7 @@ MyCallbacks cb;
 
 
 void setup() {
+
   Serial.begin(112500);
 
   // moisture sensor setup //
@@ -861,43 +871,54 @@ void setup() {
   BLEDevice::startAdvertising();
 
 
-  print_wakeup_reason();
+//  print_wakeup_reason();
 }
 
 void loop() {
-  digitalWrite(5, HIGH);
-  readSensors();
-  sendToUbidots();
-  if (checkIfProblem()) {
-    sendBLENotification();
-  }
-  else {
-    digitalWrite(LED_BUILTIN, LOW);
+       unsigned long currentTime = millis();
+       digitalWrite(5, HIGH);
+       readSensors();
+       sendToUbidots();
+        
+        if (checkIfProblem()) {
+          sendBLENotification();
+        }
+        else {
+          digitalWrite(LED_BUILTIN, LOW);
+          Serial.println(F(""));
+          Serial.print(F("Everything is ok. Going to sleep in a "));
+          Serial.print(SLEEP_DELAY_TIME);
+          Serial.println(F(" minutes"));
+          
+              delay(SLEEP_DELAY_TIME * 60000); 
+              Serial.println(F(""));
+              Serial.println(F("Reading all sensors again before sleep..."));
+              readSensors();
+              sendToUbidots();
+              if (checkIfProblem()) {
+                Serial.println(F(""));
+                Serial.println(F("Sleep abandoned! Needs your attention!"));
+                sendBLENotification();
+              }
+              else {
+                Serial.println(F(""));
+                Serial.println(F("No changes..."));
+                digitalWrite(5, LOW);
+                goToDeepSleep();
+              }
+        }
+        
+ 
+
+    while (currentTime - previousTime <= eventInterval) {
+          currentTime = millis();
+          if(!checkIfProblem()) {
+            break;
+          }
+    }
+    previousTime = currentTime;
     delay(1000);
-    Serial.println(F(""));
-    Serial.print(F("Everything is ok. Going to sleep in a "));
-    Serial.print(SLEEP_DELAY_TIME);
-    Serial.println(F(" minutes"));
-    delay(SLEEP_DELAY_TIME * 60000); 
-    Serial.println(F(""));
-    Serial.println(F("Reading all sensors again before sleep..."));
-    readSensors();
-    sendToUbidots();
-    if (checkIfProblem()) {
-      delay(1000);
-      Serial.println(F(""));
-      Serial.println(F("Sleep abandoned! Needs your attention!"));
-      sendBLENotification();
-    }
-    else {
-      delay(1000);
-      Serial.println(F(""));
-      Serial.println(F("No changes..."));
-      digitalWrite(5, LOW);
-      delay(1000);
-      goToDeepSleep();
-    }
-  }
-  delay(5000);
+   
+
 
 }
