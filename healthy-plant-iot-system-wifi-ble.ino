@@ -8,8 +8,8 @@
 #include <BLECharacteristic.h>
 #include <BLE2902.h>
 
-#include <WiFi.h>
 
+#include <WiFi.h>
 #include "Ubidots.h"
 
 /****** BLE fields *********************************/
@@ -61,6 +61,13 @@ const char* WIFI_PASSWORD = "Varvara2010";
 const char* UBIDOTS_TOKEN = "BBFF-zFr5hYpYnLlKINl15kl1kALvXonnfs";
 Ubidots ubidots(UBIDOTS_TOKEN, UBI_HTTP);
 /****** WiFi and UBidots fields *****************************************/
+
+/****** IFTTT fields *********************************/
+const char* apiKey = "ugOtpsDjvzLpaMRaeNZPz";
+const char* host = "maker.ifttt.com";
+
+const int httpsPort = 80;
+/****** IFTTT fields *********************************/
 
 /****** moisture sensor fields *********************************/
 //pin
@@ -118,13 +125,14 @@ RTC_DATA_ATTR uint8_t oldDeviceConnected = false;
 
 /****** Deep Sleep fields *********************************/
 const uint8_t DEEP_SLEEP_TIME = 120; // in minutes
-const uint8_t SLEEP_DELAY_TIME = 1; // in minutes
+const uint8_t SLEEP_DELAY_TIME = 2; // in minutes
 /****** Deep Sleep fields *********************************/
 
 /****** Awake fields *********************************/
 const uint8_t AWAKE_INTERVAL = 1; // in minutes
 uint32_t previousTime = 0;
 /****** Awake fields *********************************/
+
 
 /*
 * Checks a plant moisture.
@@ -263,6 +271,7 @@ void sendBLENotification() {
   }
 }
 
+
 /*
 * Sends notifications via BLE to the client if any of the threshold are above the limit.
 * Checks if device connected or not to the server.
@@ -284,6 +293,209 @@ void sendToUbidots(int t, uint16_t m, uint16_t h, uint16_t l) {
     Serial.println("Values did not send by the device");
   }
 }
+
+
+void sendEmailNotification() {
+  WiFiClient client;
+  Serial.println("");
+  Serial.print("Sending notification to ");
+  Serial.println(host);
+  if (!client.connect(host, httpsPort)) {
+    Serial.println("connection failed");
+    return;
+  } else {
+    Serial.println("Connected to ifttt!");
+    }
+if(isTempTooLow) {
+String url = "/trigger/temperature/with/key/ugOtpsDjvzLpaMRaeNZPz";
+
+String temp = String(temperatureLevel);
+String celsius = " °C";
+String message = " - Temperature is to low!";
+String v1 = temp + celsius + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("email sent");
+}
+delay(500);
+
+if(isTempTooHigh) {
+String url = "/trigger/temperature/with/key/ugOtpsDjvzLpaMRaeNZPz";
+
+String temp = String(temperatureLevel);
+String celsius = " °C";
+String message = " - Temperature is to high!";
+String v1 = temp + celsius + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("email sent");
+}
+delay(500);
+if(isHumidTooHigh) {
+String url = "/trigger/humidity/with/key/ugOtpsDjvzLpaMRaeNZPz";
+
+String humid = String(humidityLevel);
+String percentage = " %";
+String message = " - Humidity is to high!";
+String v1 = humid + percentage + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("email sent");
+}
+delay(500);
+
+if(isHumidTooLow) {
+String url = "/trigger/humidity/with/key/ugOtpsDjvzLpaMRaeNZPz";
+
+String humid = String(humidityLevel);
+String percentage = " %";
+String message = " - Humidity is to low!";
+String v1 = humid + percentage + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("email sent");
+}
+
+delay(500);
+if(isMoistTooLow) {
+String url = "/trigger/moisture/with/key/ugOtpsDjvzLpaMRaeNZPz";
+
+String moist = String(moistureLevel);
+String message = " - Moisture is to low!";
+String v1 = moist + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("email sent");
+}
+delay(500);
+if(isMoistTooHigh) {
+String url = "/trigger/moisture/with/key/ugOtpsDjvzLpaMRaeNZPz";
+
+String moist = String(moistureLevel);
+String message = " - Moisture is to low!";
+String v1 = moist + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("email sent");
+}
+delay(500);
+}
+
+
 
 /*
 * Sends the unit to the deep sleep.
@@ -329,20 +541,6 @@ void print_wakeup_reason() {
   }
 }
 
-/*
- * Initialize WiFi connection with the board.
-//*/
-//void initWiFi() {
-//  WiFi.mode(WIFI_STA);
-//  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-//  Serial.print("Connecting to WiFi ..");
-//  while (WiFi.status() != WL_CONNECTED) {
-//    Serial.print('.');
-//    delay(1000);
-//  }
-//  Serial.println(WiFi.localIP());
-//}
-
 
 void printReadingsToMonitor(int t, uint16_t m, uint16_t h, uint16_t l) {
   // moisture
@@ -366,8 +564,8 @@ void printReadingsToMonitor(int t, uint16_t m, uint16_t h, uint16_t l) {
     Serial.print(temp);
     Serial.print(F(" °C"));
     //checks against it's thresholds
-    if (temp < minTemp) Serial.println(F(" - Temperaure is to low!"));
-    if (temp > maxTemp) Serial.println(F(" - Temperaure is too high!"));
+    if (temp < minTemp) Serial.println(F(" - Temperature is to low!"));
+    if (temp > maxTemp) Serial.println(F(" - Temperature is too high!"));
     if (temp >= minTemp && temp <= maxTemp) Serial.println(F(" - Temperature is ok!"));
   }
 
@@ -686,7 +884,6 @@ class MyCallbacks : public BLECharacteristicCallbacks {
 //Create a callback handler
 MyCallbacks cb;
 
-
 void setup() {
 
   Serial.begin(112500);
@@ -697,17 +894,12 @@ void setup() {
   pinMode(5, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
-  //   WiFi setup
-  //   initWiFi();
-  //   Serial.print("RRSI: ");
-  //   Serial.println(WiFi.RSSI());
-
-  // Ubibot setup
-
+  // Ubibot and Wifi setup
   ubidots.wifiConnect(WIFI_SSID, WIFI_PASSWORD);
   //  ubidots.setDebug(true);
 
-
+  //IFTTT setup
+  
     // temperature and humidity sensor setup //
   dht.begin();
 
@@ -857,7 +1049,7 @@ void loop() {
   if (checkIfProblem()) {
     digitalWrite(LED_BUILTIN, HIGH);
     sendBLENotification();
-    //    sendEmailNotification();
+    sendEmailNotification();
   }
   else {
     digitalWrite(LED_BUILTIN, LOW);
@@ -885,7 +1077,7 @@ void loop() {
       Serial.println(F(""));
       Serial.println(F("Sleep abandoned! Needs your attention!"));
       sendBLENotification();
-      //    sendEmailNotification();
+      sendEmailNotification();
     }
     else {
       digitalWrite(LED_BUILTIN, LOW);
