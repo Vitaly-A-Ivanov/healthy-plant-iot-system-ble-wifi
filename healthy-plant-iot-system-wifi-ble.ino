@@ -7,10 +7,15 @@
 #include <BLEUtils.h>
 #include <BLECharacteristic.h>
 #include <BLE2902.h>
-
-
+//#include <BLE2904.h>
+#include <HTTPClient.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
+
 #include "Ubidots.h"
+#include "ArduinoJson.h"
+
+//Dracaena deremensis 'Compacta'
 
 /****** BLE fields *********************************/
 BLECharacteristic* moistureCharacteristic;
@@ -26,6 +31,10 @@ BLEUUID tempServiceID("2d5669d0-47df-11ec-81d3-0242ac130003");
 BLEUUID humdServiceID("2d566ac0-47df-11ec-81d3-0242ac130003");
 // light intensity service
 BLEUUID lightServiceID("2d566b7e-47df-11ec-81d3-0242ac130003");
+// plant database service
+BLEUUID plantDatabaseServiceID("9a2f7b48-59b2-11ec-bf63-0242ac130002");
+// plant database characterictic
+BLEUUID plantDatabaseCharID("9a2f7d96-59b2-11ec-bf63-0242ac130002");
 // moisture characterictic
 BLEUUID moistureCharID("2d566c3c-47df-11ec-81d3-0242ac130003");
 // moisture minimum threshold characterictic
@@ -33,13 +42,13 @@ BLEUUID moistureMinCharID("2d566ef8-47df-11ec-81d3-0242ac130003");
 // moisture maximum threshold characterictic  !!
 BLEUUID moistureMaxCharID("2d566fc0-47df-11ec-81d3-0242ac130003");
 // temperature characterictic
-BLEUUID tempCharID("2d567074-47df-11ec-81d3-0242ac130003");
+BLEUUID tempCharID("ec922e1e-43da-11ec-81d3-0242ac130003");
 // temperature minimum threshold characterictic
 BLEUUID tempMinCharID("2d567128-47df-11ec-81d3-0242ac130003");
 // temperature maximum threshold characterictic
 BLEUUID tempMaxCharID("2d5671dc-47df-11ec-81d3-0242ac130003");
 // humidity characterictic
-BLEUUID humidCharID("2d567290-47df-11ec-81d3-0242ac130003");
+BLEUUID humidCharID("ec922f90-43da-11ec-81d3-0242ac130003");
 // humidity minimum threshold characterictic
 BLEUUID humidMinCharID("2d56733a-47df-11ec-81d3-0242ac130003");
 // humidity maximum threshold characterictic
@@ -58,6 +67,8 @@ BLEServer* pServer = NULL;
 /****** WiFi and UBidots fields *****************************************/
 const char* WIFI_SSID = "Three_5G";
 const char* WIFI_PASSWORD = "Varvara2010";
+//const char* WIFI_SSID = "iPhone XS Max";
+//const char* WIFI_PASSWORD = "123456789";
 const char* UBIDOTS_TOKEN = "BBFF-zFr5hYpYnLlKINl15kl1kALvXonnfs";
 Ubidots ubidots(UBIDOTS_TOKEN, UBI_HTTP);
 /****** WiFi and UBidots fields *****************************************/
@@ -65,18 +76,18 @@ Ubidots ubidots(UBIDOTS_TOKEN, UBI_HTTP);
 /****** IFTTT fields *********************************/
 const char* apiKey = "ugOtpsDjvzLpaMRaeNZPz";
 const char* host = "maker.ifttt.com";
-
-const int httpsPort = 80;
+const int httpPort = 80;
 /****** IFTTT fields *********************************/
 
 /****** moisture sensor fields *********************************/
 //pin
-const uint8_t MOISTURE_PIN = A0;
+const uint8_t MOISTURE_PIN = A2;
+const uint8_t LED_GREEN_PIN = 5;
 // last moisture level
 RTC_DATA_ATTR uint16_t moistureLevel = 0;
 // threshold
-RTC_DATA_ATTR uint16_t minMoist = 0;
-RTC_DATA_ATTR uint16_t maxMoist = 50000;
+RTC_DATA_ATTR uint16_t minMoist = 15;
+RTC_DATA_ATTR uint16_t maxMoist = 60;
 
 RTC_DATA_ATTR uint8_t isMoistTooHigh = false;
 RTC_DATA_ATTR uint8_t isMoistTooLow = false;
@@ -89,8 +100,8 @@ const uint8_t DHTTYPE = DHT11;
 // last temperature level
 RTC_DATA_ATTR int temperatureLevel = 0;
 // threshold
-RTC_DATA_ATTR int minTemp = 5000;
-RTC_DATA_ATTR int maxTemp = 50000;
+RTC_DATA_ATTR int minTemp = 5;
+RTC_DATA_ATTR int maxTemp = 35;
 RTC_DATA_ATTR uint8_t isTempTooHigh = false;
 RTC_DATA_ATTR uint8_t isTempTooLow = false;
 RTC_DATA_ATTR uint8_t isTempSensorFault = false;
@@ -98,8 +109,8 @@ RTC_DATA_ATTR uint8_t isTempSensorFault = false;
 // last humidity level
 RTC_DATA_ATTR uint16_t humidityLevel = 0;
 // threshold
-RTC_DATA_ATTR uint16_t minHumid = 0;
-RTC_DATA_ATTR uint16_t maxHumid = 50000;
+RTC_DATA_ATTR uint16_t minHumid = 30;
+RTC_DATA_ATTR uint16_t maxHumid = 85;
 RTC_DATA_ATTR uint8_t isHumidTooHigh = false;
 RTC_DATA_ATTR uint8_t isHumidTooLow = false;
 RTC_DATA_ATTR uint8_t isHumidSensorFault = false;
@@ -110,8 +121,8 @@ DHT dht(DHTPIN, DHTTYPE);
 // last light intensity level
 RTC_DATA_ATTR uint16_t lightLevel = 0;
 // threshold
-RTC_DATA_ATTR uint16_t minLight = 0;
-RTC_DATA_ATTR uint16_t maxLight = 200;
+RTC_DATA_ATTR uint16_t minLight = 3700;
+RTC_DATA_ATTR uint16_t maxLight = 30000;
 RTC_DATA_ATTR uint8_t isLightTooHigh = false;
 RTC_DATA_ATTR uint8_t isLightTooLow = false;
 RTC_DATA_ATTR uint8_t isLightSensorFault = false;
@@ -125,14 +136,19 @@ RTC_DATA_ATTR uint8_t oldDeviceConnected = false;
 
 /****** Deep Sleep fields *********************************/
 const uint8_t DEEP_SLEEP_TIME = 120; // in minutes
-const uint8_t SLEEP_DELAY_TIME = 2; // in minutes
+const uint8_t SLEEP_DELAY_TIME = 10; // in minutes
 /****** Deep Sleep fields *********************************/
 
 /****** Awake fields *********************************/
-const uint8_t AWAKE_INTERVAL = 1; // in minutes
+const uint8_t AWAKE_INTERVAL = 15; // in minutes
 uint32_t previousTime = 0;
 /****** Awake fields *********************************/
 
+
+//String for storing server response
+String response = "";
+//JSON document
+DynamicJsonDocument doc(2048);
 
 /*
 * Checks a plant moisture.
@@ -140,6 +156,7 @@ uint32_t previousTime = 0;
 */
 uint16_t getMoisture() {
   uint16_t ml = analogRead(MOISTURE_PIN);
+//    delay(500);
   return ml;
 }
 
@@ -149,7 +166,7 @@ uint16_t getMoisture() {
 */
 int getTemperature() {
   int tp = dht.readTemperature();
-  delay(500);
+//  delay(500);
   return tp;
 }
 
@@ -159,7 +176,7 @@ int getTemperature() {
 */
 uint16_t getHumidity() {
   uint16_t hm = dht.readHumidity();
-  delay(500);
+//    delay(500);
   return hm;
 }
 
@@ -169,6 +186,7 @@ uint16_t getHumidity() {
 */
 uint16_t getLightIntensity() {
   uint16_t lux = LightSensor.GetLightIntensity();
+//    delay(500);
   return lux;
 }
 
@@ -197,68 +215,76 @@ uint8_t checkIfProblem() {
 * Sends notifications via BLE to the client if any of the threshold are above the limit.
 * Checks if device connected or not to the server.
 */
-void sendBLENotification() {
+void sendBLENotificationToAll() {
   if (deviceConnected) {
     //checks moisture
     if (isMoistTooLow) {
-      moistureCharacteristic->setValue("Time to water your plant!");
       moistureCharacteristic->notify();
     }
     if (isMoistTooHigh) {
-      moistureCharacteristic->setValue("Too much water in your plant!");
       moistureCharacteristic->notify();
     }
     if (isMoistSensorFault) {
-      moistureCharacteristic->setValue("Problem with the moisture senor!");
       moistureCharacteristic->notify();
     }
-    delay(100);
+    delay(10);
 
     // checks temperature
     if (isTempTooHigh) {
-      tempCharacteristic->setValue("Too much light for your plant!");
       tempCharacteristic->notify();
     }
     if (isTempTooLow) {
-      tempCharacteristic->setValue("Not enough light in your plant!");
       tempCharacteristic->notify();
     }
 
     if (isTempSensorFault) {
-      tempCharacteristic->setValue("Problem with the light senor!");
       tempCharacteristic->notify();
     }
-    delay(100);
+    delay(10);
 
     // checks humidity
     if (isHumidTooHigh) {
-      humdCharacteristic->setValue("Humidity is very high!");
       humdCharacteristic->notify();
     }
     if (isHumidTooLow) {
-      humdCharacteristic->setValue("Humidity is low!");
       humdCharacteristic->notify();
     }
     if (isHumidSensorFault) {
-      humdCharacteristic->setValue("Problem with the humidity sensor!");
       humdCharacteristic->notify();
     }
-    delay(1000);
+    delay(10);
 
     // checks light inensity
     if (isLightTooHigh) {
-      lightCharacteristic->setValue("Too much light!");
       lightCharacteristic->notify();
     }
     if (isLightTooLow) {
-      lightCharacteristic->setValue("Light level is ok!");
       lightCharacteristic->notify();
     }
     if (isLightSensorFault) {
-      lightCharacteristic->setValue("Problem with the light inensity senor!");
       lightCharacteristic->notify();
     }
-    delay(100);
+    delay(10);
+  }
+  // disconnecting
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500);
+    pServer->startAdvertising();
+    oldDeviceConnected = deviceConnected;
+  }
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+  }
+}
+
+/*
+* Sends notifications via BLE to the client if any of the threshold are above the limit.
+* Checks if device connected or not to the server.
+*/
+void sendBLENotification(BLECharacteristic* &characteristic) {
+  if (deviceConnected) {
+    characteristic->notify();
+    delay(10);
   }
   // disconnecting
   if (!deviceConnected && oldDeviceConnected) {
@@ -296,18 +322,18 @@ void sendToUbidots(int t, uint16_t m, uint16_t h, uint16_t l) {
 
 
 void sendEmailNotification() {
-  WiFiClient client;
-  Serial.println("");
+  Serial.print("");
   Serial.print("Sending notification to ");
   Serial.println(host);
-  if (!client.connect(host, httpsPort)) {
+if(isTempTooLow) {
+    WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
     Serial.println("connection failed");
-    return;
+     Serial.println("notification did not send!");
   } else {
     Serial.println("Connected to ifttt!");
-    }
-if(isTempTooLow) {
-String url = "/trigger/temperature/with/key/ugOtpsDjvzLpaMRaeNZPz";
+    String url = "/trigger/temperature/with/key/-xIO2yRF6XRohYRWrCEmi";
 
 String temp = String(temperatureLevel);
 String celsius = " °C";
@@ -334,12 +360,21 @@ String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
     }
   }
   String line = client.readStringUntil('\n');
-  Serial.println("email sent");
+  Serial.println("notification sent!");
+    }
+
 }
-delay(500);
+
 
 if(isTempTooHigh) {
-String url = "/trigger/temperature/with/key/ugOtpsDjvzLpaMRaeNZPz";
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+     Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/temperature/with/key/-xIO2yRF6XRohYRWrCEmi";
 
 String temp = String(temperatureLevel);
 String celsius = " °C";
@@ -366,11 +401,20 @@ String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
     }
   }
   String line = client.readStringUntil('\n');
-  Serial.println("email sent");
+   Serial.println("notification sent!");
+    }
+
 }
-delay(500);
+
 if(isHumidTooHigh) {
-String url = "/trigger/humidity/with/key/ugOtpsDjvzLpaMRaeNZPz";
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+    Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/humidity/with/key/-xIO2yRF6XRohYRWrCEmi";
 
 String humid = String(humidityLevel);
 String percentage = " %";
@@ -397,12 +441,21 @@ String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
     }
   }
   String line = client.readStringUntil('\n');
-  Serial.println("email sent");
+   Serial.println("notification sent!");
+    }
+
 }
-delay(500);
+
 
 if(isHumidTooLow) {
-String url = "/trigger/humidity/with/key/ugOtpsDjvzLpaMRaeNZPz";
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+     Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/humidity/with/key/-xIO2yRF6XRohYRWrCEmi";
 
 String humid = String(humidityLevel);
 String percentage = " %";
@@ -429,12 +482,21 @@ String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
     }
   }
   String line = client.readStringUntil('\n');
-  Serial.println("email sent");
+   Serial.println("notification sent!");
+    }
+
 }
 
-delay(500);
+
 if(isMoistTooLow) {
-String url = "/trigger/moisture/with/key/ugOtpsDjvzLpaMRaeNZPz";
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+      Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/moisture/with/key/-xIO2yRF6XRohYRWrCEmi";
 
 String moist = String(moistureLevel);
 String message = " - Moisture is to low!";
@@ -460,11 +522,20 @@ String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
     }
   }
   String line = client.readStringUntil('\n');
-  Serial.println("email sent");
+  Serial.println("notification sent!");
+    }
+
 }
-delay(500);
+
 if(isMoistTooHigh) {
-String url = "/trigger/moisture/with/key/ugOtpsDjvzLpaMRaeNZPz";
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+      Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/moisture/with/key/-xIO2yRF6XRohYRWrCEmi";
 
 String moist = String(moistureLevel);
 String message = " - Moisture is to low!";
@@ -490,9 +561,89 @@ String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
     }
   }
   String line = client.readStringUntil('\n');
-  Serial.println("email sent");
+  Serial.println("notification sent!");
+    }
+
 }
-delay(500);
+
+if(isLightTooLow) {
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+      Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/light/with/key/-xIO2yRF6XRohYRWrCEmi";
+
+String light = String(lightLevel);
+String message = " - Light is to low!";
+String v1 = light + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("notification sent!");
+    }
+
+}
+
+if(isLightTooHigh) {
+      WiFiClient client;
+  Serial.println("");
+  if (!client.connect(host, httpPort)) {
+    Serial.println("connection failed");
+      Serial.println("notification did not send!");
+  } else {
+    Serial.println("Connected to ifttt!");
+    String url = "/trigger/light/with/key/-xIO2yRF6XRohYRWrCEmi";
+
+String light = String(lightLevel);
+String message = " - Light is to low!";
+String v1 = light + message;
+Serial.println("message: " + v1);
+String df1 = "{\"value1\":";
+String IFTTT_POST_DATA = df1 + "\"" + v1 + "\""  + "}" ;
+String IFTTT_POST_DATA_SIZE = String(IFTTT_POST_DATA.length());
+
+  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n" +
+               "User-Agent: BuildFailureDetectorESP32\r\n" +
+               "Content-Type: application/json\r\n" +
+               "Content-Length:" + IFTTT_POST_DATA_SIZE + "\r\n" +
+               "\r\n" +
+               IFTTT_POST_DATA + "\r\n");
+
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("notification sent!");
+    }
+
+}
+
 }
 
 
@@ -645,6 +796,99 @@ void checkAgainstThresholds(int t, uint16_t m, uint16_t h, uint16_t l) {
 
 }
 
+void findPlantSettings(String plantName) {
+  if (!WiFi.status()== WL_CONNECTED){
+       Serial.println("WiFi Disconnected");
+       Serial.println("Trying to connect again...");
+       WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  }
+    ////Initiate HTTP client
+  HTTPClient http;
+  //The API URL
+  String request = "https://open.plantbook.io/api/v1/plant/detail/" + plantName + "/";
+  //Start the request
+  http.begin(request);
+  http.addHeader("Authorization","Bearer TT4xiJEqm5xt0dTeHkesBKBfBiqrXT");
+  int httpResponseCode = http.GET();
+  Serial.println(F("Looking your plant in a database..."));
+  delay(500);
+      if (httpResponseCode == 200) {
+          Serial.println(F("Plant found in a database!")); 
+          Serial.println(F("")); 
+          delay(500);
+          String response = http.getString();
+          DynamicJsonDocument doc(2048);
+          DeserializationError error = deserializeJson(doc, response);
+          if(error) {
+             Serial.print(F("deserializeJson() failed: "));
+             Serial.println(error.f_str());
+             Serial.println(response);
+          } else {
+              const char* plantName = doc["display_pid"];
+              Serial.print(F("Plant name: "));
+              Serial.println(plantName);
+              
+              const int plantMinTemp = doc["min_temp"];
+              Serial.print(F("minimum temperature: "));
+              Serial.print(plantMinTemp);
+              Serial.println(F("°C"));
+              
+              const int plantMaxTemp = doc["max_temp"];
+              Serial.print(F("maximum temperature: "));
+              Serial.print(plantMaxTemp);
+              Serial.println(F("°C"));
+              
+              const int plantMinHumid = doc["min_env_humid"];
+              Serial.print(F("minimum humidity: "));
+              Serial.print(plantMinHumid);
+              Serial.println(F("%"));
+              
+              const int plantMaxHumid = doc["max_env_humid"];
+              Serial.print(F("maximum humidity: "));
+              Serial.print(plantMaxHumid);
+              Serial.println(F("%"));
+              
+             
+              
+              const int plantMinMoist = doc["min_soil_moist"];
+              Serial.print(F("minimum soil moisture: "));
+              Serial.println(plantMinMoist);
+
+               const int plantMaxMoist = doc["max_soil_moist"];
+              Serial.print(F("maximium soil moisture: "));
+              Serial.println(plantMaxMoist);
+              
+              const int plantMinLight = doc["min_light_lux"];
+              Serial.print(F("minimum light: "));
+              Serial.print(plantMinLight);
+              Serial.println(F(" lux"));
+      
+              const int plantMaxLight = doc["max_light_lux"];
+              Serial.print(F("maximum light: "));
+              Serial.print(plantMaxLight);
+              Serial.println(F(" lux"));
+            }
+ 
+        }
+        if (httpResponseCode == 404) {
+           Serial.print("Plant not found in a database!");
+           Serial.println(F(""));
+         
+        }
+        if  (httpResponseCode != 200 && httpResponseCode != 404) {
+          Serial.print("Error code: ");
+          Serial.println(httpResponseCode);
+          String response = http.getString();
+          Serial.print("Response: ");
+          Serial.println(response);
+          
+        }
+      //Close connection 
+      http.end();
+  
+  
+  }
+
 /*
 * The callback function that handles receiving data being sent from the client(phone) and Bluetooth connection status.
 */
@@ -670,126 +914,173 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minMoist = i;
-        //        int *data = getAllSensorsValues();
+        Serial.print(F("New minimum moisture threshold has been set: "));
+        Serial.println(minMoist);
+        uint16_t ml = getMoisture();
+        if (ml < minMoist) {
+          isMoistTooLow = true;
 
-
-        if (checkIfProblem()) {
-          sendBLENotification();
-        }
+        } else {
+            isMoistTooLow = false;
+          
+          }
+        
 
       }
       else {
+          Serial.println(F(" "));
         Serial.println(F("not a number"));
       }
+ 
     }
     // moisture maximum threshold
     if (moistureMaxCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxMoist = i;
-        //        int *data = getAllSensorsValues();
+        Serial.print(F("New maximum moisture threshold has been set: "));
+        Serial.println(maxMoist);
+        uint16_t ml = getMoisture();
+        if (ml > maxMoist) {
+          isMoistTooHigh = true;
 
-        if (checkIfProblem()) {
-          sendBLENotification();
+        } else {
+            isMoistTooHigh = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+     
     }
     // temperature minimum threshold
     if (tempMinCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         int i = atoi((pCharacteristic->getValue().c_str()));
         minTemp = i;
-        int ml = getTemperature();
-        if (ml < minTemp) {
+        Serial.print(F("New minimum temperature threshold has been set: "));
+        Serial.println(minTemp);
+        int t = getTemperature();
+         delay(500);
+        if (t < minTemp) {
           isTempTooLow = true;
-          sendBLENotification();
+
+        } else {
+            isTempTooLow = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+  
     }
     // temperature maximum threshold
     if (tempMaxCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         int i = atoi((pCharacteristic->getValue().c_str()));
         maxTemp = i;
-        //         int *data = getAllSensorsValues();
-        delay(500);
+        Serial.print(F("New maximum temperature threshold has been set: "));
+        Serial.println(maxTemp);
+        int t = getTemperature();
+        if (t > maxTemp) {
+          isTempTooHigh = true;
 
-        if (checkIfProblem()) {
-          sendBLENotification();
+        }else {
+             isTempTooHigh = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+   
     }
     // humidity minimum threshold
     if (humidMinCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minHumid = i;
-        //        int *data = getAllSensorsValues();
-        delay(500);
-
-        if (checkIfProblem()) {
-          sendBLENotification();
+            Serial.print(F("New minimum humidity threshold has been set: "));
+        Serial.println(minHumid);
+        uint16_t h = getHumidity();
+         delay(500);
+        if (h < minHumid) {
+          isHumidTooLow = true;
+        }else {
+             isHumidTooLow = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+  
     }
     // humidity maximum threshold
     if (humidMaxCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxHumid = i;
-        //       int *data = getAllSensorsValues();
-        delay(500);
-
-        if (checkIfProblem()) {
-          sendBLENotification();
+         Serial.print(F("New maximum humidity threshold has been set: "));
+        Serial.println(maxHumid);
+        uint16_t h = getHumidity();
+        if (h > maxHumid) {
+          isHumidTooHigh = true;
+        }else {
+           isHumidTooHigh = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+  
     }
     // light intensity minimum threshold
     if (lightMinCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         minLight = i;
-        //        int *data = getAllSensorsValues();
-        //        sendToUbidots(data);
-        if (checkIfProblem()) {
-          sendBLENotification();
+        Serial.print(F("New minimum light intensity threshold has been set: "));
+        Serial.println(minLight);
+        uint16_t lux = getLightIntensity();
+        if (lux < minLight) {
+          isLightTooLow = true;
+        }else {
+            isLightTooLow = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+     
     }
     // light intensity maximum threshold
     if (lightMaxCharID.equals(pCharacteristic->getUUID())) {
       if (is_number(pCharacteristic->getValue().c_str())) {
         uint16_t i = atoi((pCharacteristic->getValue().c_str()));
         maxLight = i;
-        //         int *data = getAllSensorsValues();
-
-        if (checkIfProblem()) {
-          sendBLENotification();
+        Serial.print(F("New maximum light intensity threshold has been set: "));
+        Serial.println(maxLight);
+        uint16_t lux = getLightIntensity();
+        if (lux > maxLight) {
+          isLightTooHigh = true;
+        }else {
+           isLightTooHigh = false;
         }
       }
       else {
         Serial.println(F("not a number"));
       }
+    
     }
+
+     // plant database name
+    if (plantDatabaseCharID.equals(pCharacteristic->getUUID())) {
+        String plantName = pCharacteristic->getValue().c_str();
+        std::for_each(plantName.begin(), plantName.end(), [](char & c) {
+            c = ::tolower(c);
+        });
+      findPlantSettings(plantName);
+    }
+   
   }
 
 
@@ -802,47 +1093,101 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       char str[8];
       sprintf(str, "%u", m);
       pCharacteristic->setValue("Current Moisture level: " + std::string(str));
+        if (m < minMoist) {
+          isMoistTooLow = true;
+          sendBLENotification(pCharacteristic);
+        } else {
+            isMoistTooLow = false;
+          }
+        if (m > maxMoist) {
+          isMoistTooHigh = true;
+                 sendBLENotification(pCharacteristic);
+        } else {
+            isMoistTooHigh = false;
+        }
+     
+
+      
+      
     }
     // moisture minimum threshold
     if (moistureMinCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%u", minMoist);
       pCharacteristic->setValue("Minimum moisture level: " + std::string(str));
+ 
     }
     // moisture maximum threshold
     if (moistureMaxCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%u", maxMoist);
       pCharacteristic->setValue("Maximum moisture level: " + std::string(str));
+  
     }
 
     // temperature from the sensor
     if (tempCharID.equals(pCharacteristic->getUUID())) {
-      delay(100);
+      delay(500);
       int t = getTemperature();
+      delay(500);
       char str[8];
       sprintf(str, "%d", t);
-      pCharacteristic->setValue("Current Temperature level: " + std::string(str));
+               pCharacteristic->setValue("Current Temperature level: " + std::string(str));
+       if (t < minTemp) {
+          isTempTooLow = true;
+          sendBLENotification(pCharacteristic);
+        } else {
+            isTempTooLow = false;
+        }
+         if (t > maxTemp) {
+          isTempTooHigh = true;
+         sendBLENotification(pCharacteristic);
+        }else {
+             isTempTooHigh = false;
+        }
+
+     
+        
+
     }
     // temperature maximum threshold
     if (tempMaxCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%d", maxTemp);
       pCharacteristic->setValue("Maximum temperature level: " + std::string(str));
+
     }
     // temperature minimum threshold
     if (tempMinCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%d", minTemp);
       pCharacteristic->setValue("Minimum temperature level: " + std::string(str));
+
     }
     // humdity from the sensor
     if (humidCharID.equals(pCharacteristic->getUUID())) {
-      delay(100);
+         delay(500);
       uint16_t h = dht.readHumidity();
-      char str[8];
+         delay(500);
+       char str[8];
       sprintf(str, "%u", h);
-      pCharacteristic->setValue("Current Humidity level: " + std::string(str));
+                    pCharacteristic->setValue("Current Humidity level: " + std::string(str));
+
+       if (h < minHumid) {
+          isHumidTooLow = true;
+              sendBLENotification(pCharacteristic);
+      
+        }else {
+             isHumidTooLow = false;
+        }
+        if (h > maxHumid) {
+          isHumidTooHigh = true;
+              sendBLENotification(pCharacteristic);
+        }else {
+           isHumidTooHigh = false;
+        }
+
+     
 
     }
     // humdity maximum threshold
@@ -850,20 +1195,38 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       char str[8];
       sprintf(str, "%u", maxHumid);
       pCharacteristic->setValue("Maximum Humidity level " + std::string(str));
+  
     }
     // humdity minimum threshold
     if (humidMinCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%u", minHumid);
       pCharacteristic->setValue("Minimum Humidity level: " + std::string(str));
+     
     }
 
     // light intensity from the sensor
     if (lightCharID.equals(pCharacteristic->getUUID())) {
       uint16_t lux = getLightIntensity();
       char str[8];
-      sprintf(str, "%u", lux);
-      pCharacteristic->setValue("Current Light Intensity level: " + std::string(str));
+            sprintf(str, "%u", lux);
+     
+       if (lux < minLight) {
+          isLightTooLow = true;
+        sendBLENotification(pCharacteristic);
+    
+        }else {
+            isLightTooLow = false;
+        }
+        if (lux > maxLight) {
+          isLightTooHigh = true;
+         
+         sendBLENotification(pCharacteristic);
+        }else {
+           isLightTooHigh = false;
+        }
+         pCharacteristic->setValue("Current Light Intensity level: " + std::string(str));
+
     }
 
     // light intensity minimum threshold
@@ -871,15 +1234,18 @@ class MyCallbacks : public BLECharacteristicCallbacks {
       char str[8];
       sprintf(str, "%u", minLight);
       pCharacteristic->setValue("Minimum Light Intensity level: " + std::string(str));
+
     }
     //light intensity maximum threshold
     if (lightMaxCharID.equals(pCharacteristic->getUUID())) {
       char str[8];
       sprintf(str, "%u", maxLight);
       pCharacteristic->setValue("Maximum Light Intensity level: " + std::string(str));
+ 
     }
   }
 };
+
 
 //Create a callback handler
 MyCallbacks cb;
@@ -888,18 +1254,13 @@ void setup() {
 
   Serial.begin(112500);
 
+
   // moisture sensor setup //
   pinMode(MOISTURE_PIN, INPUT);
 
-  pinMode(5, OUTPUT);
+  pinMode(LED_GREEN_PIN, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
-  // Ubibot and Wifi setup
-  ubidots.wifiConnect(WIFI_SSID, WIFI_PASSWORD);
-  //  ubidots.setDebug(true);
-
-  //IFTTT setup
-  
     // temperature and humidity sensor setup //
   dht.begin();
 
@@ -924,6 +1285,15 @@ void setup() {
   // create light intensity service
   BLEService* lightService = pServer->createService(lightServiceID);
 
+    // create plant database service
+  BLEService* plantDatabaseService = pServer->createService(plantDatabaseServiceID);
+
+   // plant database characteristic to write plant name and look up in a database its settings
+  BLECharacteristic* plantDatabaseCharacteristic = plantDatabaseService->createCharacteristic(
+    plantDatabaseCharID,
+    BLECharacteristic::BLECharacteristic::PROPERTY_WRITE);
+  plantDatabaseCharacteristic->setCallbacks(&cb);
+
   // moisture characteristic to read current value from the moisture sensor
   moistureCharacteristic = soilMoistureService->createCharacteristic(
     moistureCharID,
@@ -931,18 +1301,17 @@ void setup() {
   moistureCharacteristic->setCallbacks(&cb);
   moistureCharacteristic->addDescriptor(new BLE2902());
 
+
   // moisture characteristic to read and write minimum threshold value for the moisture sensor
   BLECharacteristic* moistureMinCharacteristic = soilMoistureService->createCharacteristic(
     moistureMinCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // moistureThrCharacteristic->setValue(moistureThreshold);
   moistureMinCharacteristic->setCallbacks(&cb);
 
   // moisture characteristic to read and write maximum threshold value for the moisture sensor
   BLECharacteristic* moistureMaxCharacteristic = soilMoistureService->createCharacteristic(
     moistureMaxCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // moistureThrCharacteristic->setValue(moistureThreshold);
   moistureMaxCharacteristic->setCallbacks(&cb);
 
 
@@ -957,14 +1326,12 @@ void setup() {
   BLECharacteristic* tempMinCharacteristic = temperatureService->createCharacteristic(
     tempMinCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // tempThrCharacteristic->setValue(tempThreshold);
   tempMinCharacteristic->setCallbacks(&cb);
 
   // temperature characteristic to read and write maximum threshold value for the temperature sensor
   BLECharacteristic* tempMaxCharacteristic = temperatureService->createCharacteristic(
     tempMaxCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // tempThrCharacteristic->setValue(tempThreshold);
   tempMaxCharacteristic->setCallbacks(&cb);
 
   // humidity characteristic to read current value from the humidity sensor
@@ -978,14 +1345,12 @@ void setup() {
   BLECharacteristic* humidMinCharacteristic = humidityService->createCharacteristic(
     humidMinCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // humdThrCharacteristic->setValue(humdThreshold);
   humidMinCharacteristic->setCallbacks(&cb);
 
   // humidity characteristic to read and write maximum threshold value for the humidity sensor
   BLECharacteristic* humidMaxCharacteristic = humidityService->createCharacteristic(
     humidMaxCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // humdThrCharacteristic->setValue(humdThreshold);
   humidMaxCharacteristic->setCallbacks(&cb);
 
   // light intensity characteristic to read current value from the light intensity sensor
@@ -999,14 +1364,12 @@ void setup() {
   BLECharacteristic* lightMinCharacteristic = lightService->createCharacteristic(
     lightMinCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // lightThrCharacteristic->setValue(lightIntensityThreshold);
   lightMinCharacteristic->setCallbacks(&cb);
 
   // humidity characteristic to read and write maximum threshold value for the humidity sensor
   BLECharacteristic* lightMaxCharacteristic = lightService->createCharacteristic(
     lightMaxCharID,
     BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE);
-  // lightThrCharacteristic->setValue(lightIntensityThreshold);
   lightMaxCharacteristic->setCallbacks(&cb);
 
   //Starts all services
@@ -1014,6 +1377,7 @@ void setup() {
   humidityService->start();
   lightService->start();
   soilMoistureService->start();
+  plantDatabaseService->start();
 
   // Advertising config
   BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
@@ -1021,6 +1385,7 @@ void setup() {
   pAdvertising->addServiceUUID(humdServiceID);
   pAdvertising->addServiceUUID(lightServiceID);
   pAdvertising->addServiceUUID(soilMoistureServiceID);
+   pAdvertising->addServiceUUID(plantDatabaseServiceID);
 
   pAdvertising->setScanResponse(true);
 
@@ -1033,22 +1398,31 @@ void setup() {
 
 
   //  print_wakeup_reason();
+
+
+  // Ubibot and Wifi setup
+  Serial.println(F(""));
+  Serial.println(F("Connecting to WiFi..."));
+  ubidots.wifiConnect(WIFI_SSID, WIFI_PASSWORD);
+//  ubidots.setDebug(true);
 }
 
 void loop() {
   uint8_t sleepAbandonned = false;
   uint32_t currentTime = millis();
-  digitalWrite(5, HIGH);
+  digitalWrite(LED_GREEN_PIN, HIGH);
+  Serial.println(F(""));
+  Serial.println(F("Reading all sensors..."));
   int temp = getTemperature();
-  uint16_t moist = getMoisture();
   uint16_t humid = getHumidity();
   uint16_t lux = getLightIntensity();
+  uint16_t moist = getMoisture();
   printReadingsToMonitor(temp, moist, humid, lux);
   checkAgainstThresholds(temp, moist, humid, lux);
   sendToUbidots(temp, moist, humid, lux);
   if (checkIfProblem()) {
     digitalWrite(LED_BUILTIN, HIGH);
-    sendBLENotification();
+    sendBLENotificationToAll();
     sendEmailNotification();
   }
   else {
@@ -1076,7 +1450,7 @@ void loop() {
       digitalWrite(LED_BUILTIN, HIGH);
       Serial.println(F(""));
       Serial.println(F("Sleep abandoned! Needs your attention!"));
-      sendBLENotification();
+sendBLENotificationToAll();
       sendEmailNotification();
     }
     else {
@@ -1100,5 +1474,4 @@ void loop() {
     }
   }
   previousTime = currentTime;
-  delay(1000);
 }
